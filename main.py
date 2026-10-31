@@ -35,42 +35,30 @@ def load_spectrum(filepath: Path) -> Tuple[np.ndarray, np.ndarray]:
 # Continuum Estimation & Normalization
 # -----------------------------------------------------------------------------
 
+from numpy.polynomial import Legendre
+
 def fit_polynomial_continuum(
     wavelength: np.ndarray,
     flux: np.ndarray,
     degree: int = 6,
     max_iter: int = 20,
 ) -> np.ndarray:
-    """
-    Iteratively fits a Legendre polynomial continuum while rejecting strong absorption lines.
-    """
-    # Normalize domain to [-1, 1] for Legendre stability
-    scaled_wave = 2.0 * (wavelength - wavelength.min()) / (wavelength.max() - wavelength.min()) - 1.0
+    """Iteratively fits a Legendre polynomial continuum while rejecting absorption lines."""
+    rejection_intervals = [(3925, 3985), (4060, 4145), (4300, 4380), (4820, 4900), (6520, 6600)]
     
-    # Initial mask excluding prominent broad line cores
-    rejection_intervals = [
-        (3925, 3985), (4060, 4145), (4300, 4380), (4820, 4900), (6520, 6600)
-    ]
-    fit_mask = np.ones_like(wavelength, dtype=bool)
-    for lower, upper in rejection_intervals:
-        fit_mask &= ~((wavelength > lower) & (wavelength < upper))
+    mask = ~np.bitwise_or.reduce([(wavelength > lo) & (wavelength < hi) for lo, hi in rejection_intervals])
 
-    continuum = np.empty_like(flux)
     for _ in range(max_iter):
-        coeffs = leg.legfit(scaled_wave[fit_mask], flux[fit_mask], degree)
-        continuum = leg.legval(scaled_wave, coeffs)
-        
-        residuals = flux - continuum
-        std_residuals = np.std(residuals[fit_mask])
-        
-        # Asymmetric rejection to avoid absorption troughs while keeping stellar continuum
-        updated_mask = fit_mask & (residuals > -1.5 * std_residuals) & (residuals < 3.0 * std_residuals)
-        if updated_mask.sum() == fit_mask.sum():
+        poly = Legendre.fit(wavelength[mask], flux[mask], deg=degree)
+        residuals = flux - poly(wavelength)
+        std = np.std(residuals[mask])
+
+        new_mask = mask & (residuals > -1.5 * std) & (residuals < 3.0 * std)
+        if np.array_equal(new_mask, mask):
             break
-        fit_mask = updated_mask
+        mask = new_mask
 
-    return continuum
-
+    return poly(wavelength)
 
 def fit_envelope_continuum(
     wavelength: np.ndarray,
@@ -151,13 +139,7 @@ def annotate_spectral_lines(
     max_wave: float,
     lines: List[Tuple[str, float]],
 ) -> None:
-    """
-    Draws vertical markers and collision-free labels for lines in the current region.
-    """
-    visible_lines = sorted(
-        [(name, wave) for name, wave in lines if min_wave < wave < max_wave],
-        key=lambda item: item[1]
-    )
+    visible_lines = [(name, wave) for name, wave in lines if min_wave < wave < max_wave]
     if not visible_lines:
         return
 
@@ -166,11 +148,8 @@ def annotate_spectral_lines(
     label_positions = resolve_label_overlaps(original_waves, min_separation)
 
     for (name, line_wave), label_wave in zip(visible_lines, label_positions):
-        # Line marker at the actual line wavelength
         ax.vlines(line_wave, 0.2, 1.10, color="tab:blue", lw=0.5, ls=":")
-        # Angled segment guiding to displaced label position
         ax.plot([line_wave, label_wave], [1.10, 1.16], color="tab:blue", lw=0.5)
-        # Rotated text annotation
         ax.text(
             label_wave,
             1.17,
@@ -181,7 +160,6 @@ def annotate_spectral_lines(
             va="bottom",
             color="tab:blue",
         )
-
 
 def export_spectrum_pdf(
     wavelength: np.ndarray,
@@ -223,10 +201,15 @@ def main() -> None:
             continue
 
         target_name = file_path.stem
+        print(f"Processing: {target_name} with normalization method '{norm_method}'")
         wavelength, raw_flux = load_spectrum(file_path)
+        print(f"Loaded {len(wavelength)} data points from {file_path}")
         
+        print("Normalizing spectrum...")
         _, normalized_flux = normalize_spectrum(wavelength, raw_flux, method=norm_method)
-
+        print("Normalization complete.")
+        
+        print("Generating PDF plots...")
         output_pdf = FIGURES_DIR / f"{target_name}.pdf"
         export_spectrum_pdf(
             wavelength=wavelength,
@@ -236,8 +219,8 @@ def main() -> None:
             regions=SPECTRAL_REGIONS,
             reference_lines=SPECTRAL_LINES,
         )
-
         print(f"Generated: {output_pdf}")
+        print("-" * 60)
 
 
 if __name__ == "__main__":
