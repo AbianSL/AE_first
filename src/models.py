@@ -1,16 +1,17 @@
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 DATA_DIR = Path("data")
 FIGURES_DIR = Path("figuras")
 
 # Map of stellar spectrum files to their normalization strategy:
 # 'polynomial' for hotter stars, 'envelope' for cooler stars
-TARGET_STARS: dict[Path, str] = {
+TARGET_STARS: Dict[Path, str] = {
     DATA_DIR / "EstrellaProblema1.dat": "polynomial",
     DATA_DIR / "EstrellaProblema2.dat": "envelope",
 }
 
-SPECTRAL_REGIONS: list[tuple[float, float]] = [
+SPECTRAL_REGIONS: List[Tuple[float, float]] = [
     (3900.0, 4100.0),
     (4100.0, 4300.0),
     (4300.0, 4500.0),
@@ -20,7 +21,7 @@ SPECTRAL_REGIONS: list[tuple[float, float]] = [
     (6000.0, 6800.0),
 ]
 
-SPECTRAL_LINES: list[tuple[str, float]] = [
+SPECTRAL_LINES: List[Tuple[str, float]] = [
     ("Hε", 3970.07), ("Hδ", 4101.73), ("Hγ", 4340.47), ("Hβ", 4861.35),
     ("He I", 4026.19), ("He I", 4120.81), ("He I", 4143.76), ("He I", 4387.93),
     ("He I", 4471.48), ("He I", 4713.37), ("He I", 4921.93),
