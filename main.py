@@ -1,139 +1,244 @@
 """
-Rectifica las estrellas problema y dibuja el espectro con las líneas de la hoja.
-Uso:  python3 espectros_con_lineas.py
-Resultado: figuras/EstrellaProblema1.pdf y figuras/EstrellaProblema2.pdf
-           (una región del espectro por página)
+Normalizes target stellar spectra and plots the spectra alongside known spectral lines.
+Output: Saved PDF files organized by regions in the output directory.
 """
 
-import os
+from pathlib import Path
+from typing import Dict, List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from numpy.polynomial import legendre as L
+from numpy.polynomial import legendre as leg
 from scipy.interpolate import PchipInterpolator
+from src.models import DATA_DIR, FIGURES_DIR, TARGET_STARS, SPECTRAL_REGIONS, SPECTRAL_LINES
 
-# Estrella -> método de rectificación ("polinomio" para la caliente,
-# "envolvente" para la fría)
-ESTRELLAS = {"EstrellaProblema1.dat": "polinomio",
-             "EstrellaProblema2.dat": "envolvente"}
+# -----------------------------------------------------------------------------
+# Data Ingestion
+# -----------------------------------------------------------------------------
 
-REGIONES = [(3900, 4100), (4100, 4300), (4300, 4500), (4500, 4700),
-            (4700, 5000), (5000, 6000), (6000, 6800)]
-
-# Líneas de la hoja (nombre, λ en Å)
-LINEAS = [
-    ("Hε", 3970.07), ("Hδ", 4101.73), ("Hγ", 4340.47), ("Hβ", 4861.35),
-    ("He I", 4026.19), ("He I", 4120.81), ("He I", 4143.76), ("He I", 4387.93),
-    ("He I", 4471.48), ("He I", 4713.37), ("He I", 4921.93),
-    ("He II", 4199.87), ("He II", 4541.59), ("He II", 4685.68),
-    ("Ca II K", 3933.663), ("Ca II H", 3968.49), ("N IV", 4057.759),
-    ("O II", 4069.636), ("O II", 4072.164), ("O II", 4075.868),
-    ("Si IV", 4088.863), ("Si IV", 4116.104), ("Si II", 4128.054),
-    ("Si II", 4130.894), ("O II", 4132.00), ("C III", 4153.685),
-    ("C III", 4155.80), ("O II", 4185.00), ("C III", 4186.900), ("O II", 4189.00),
-    ("Si IV", 4212.00), ("N II", 4237.07), ("N II", 4241.55), ("N II", 4242.424),
-    ("C II", 4267.01), ("O II", 4277.4265), ("O II", 4317.139), ("O II", 4319.631),
-    ("O II", 4366.00), ("O II", 4414.90), ("O II", 4416.97), ("O II", 4452.00),
-    ("Mg II", 4481.13), ("N IV", 4513.3), ("N III", 4516.12), ("N III", 4519.41),
-    ("N III", 4530.84), ("N III", 4534.57), ("Si III", 4539.00),
-    ("Si III", 4552.654), ("Si III", 4554.00), ("Si III", 4567.872),
-    ("Si III", 4574.777), ("N V", 4603.73), ("N IV", 4607.30), ("N III", 4634.12),
-    ("O II", 4638.00), ("C III", 4640.03), ("N III", 4640.64), ("N III", 4641.85),
-    ("C III", 4647.419), ("O II", 4649.1348), ("C III", 4650.246),
-    ("O II", 4650.8384), ("C III", 4651.016), ("C III", 4651.473),
-    ("C III", 4652.049), ("Si IV", 4654.00), ("C III", 4659.06), ("O II", 4661.00),
-    ("O II", 4676.00),
-    ("Fe II", 4922.1), ("TiO", 4584), ("TiO", 4623), ("TiO", 4759), ("TiO", 4804),
-    ("TiO", 4954), ("Banda G", 4300), ("Li I", 6708), ("Mn I", 4030),
-    ("Mn I", 4034), ("Fe II", 4416.8), ("Ca I", 4226), ("Fe I", 4383),
-    ("Fe I", 4143.8),
-]
+def load_spectrum(filepath: Path) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Loads and cleans spectral data from a two-column ASCII file.
+    
+    Returns:
+        Tuple of sorted (wavelengths, flux).
+    """
+    raw_data = np.genfromtxt(filepath, comments="#", invalid_raise=False)
+    valid_mask = np.isfinite(raw_data).all(axis=1)
+    clean_data = raw_data[valid_mask]
+    
+    sorted_data = clean_data[np.argsort(clean_data[:, 0])]
+    return sorted_data[:, 0], sorted_data[:, 1]
 
 
-# ----------------------------------------------------------------- rectificación
-def leer(ruta):
-    d = np.genfromtxt(ruta, comments="#", invalid_raise=False)
-    d = d[np.isfinite(d).all(axis=1)]
-    d = d[np.argsort(d[:, 0])]
-    return d[:, 0], d[:, 1]
+# -----------------------------------------------------------------------------
+# Continuum Estimation & Normalization
+# -----------------------------------------------------------------------------
 
+def fit_polynomial_continuum(
+    wavelength: np.ndarray,
+    flux: np.ndarray,
+    degree: int = 6,
+    max_iter: int = 20,
+) -> np.ndarray:
+    """
+    Iteratively fits a Legendre polynomial continuum while rejecting strong absorption lines.
+    """
+    # Normalize domain to [-1, 1] for Legendre stability
+    scaled_wave = 2.0 * (wavelength - wavelength.min()) / (wavelength.max() - wavelength.min()) - 1.0
+    
+    # Initial mask excluding prominent broad line cores
+    rejection_intervals = [
+        (3925, 3985), (4060, 4145), (4300, 4380), (4820, 4900), (6520, 6600)
+    ]
+    fit_mask = np.ones_like(wavelength, dtype=bool)
+    for lower, upper in rejection_intervals:
+        fit_mask &= ~((wavelength > lower) & (wavelength < upper))
 
-def continuo_polinomio(lam, flujo, orden=6):
-    """Polinomio ajustado iterativamente, descartando los puntos en líneas."""
-    x = 2 * (lam - lam.min()) / (lam.max() - lam.min()) - 1
-    usar = np.ones_like(lam, dtype=bool)
-    for a, b in [(3925, 3985), (4060, 4145), (4300, 4380), (4820, 4900), (6520, 6600)]:
-        usar &= ~((lam > a) & (lam < b))
-    for _ in range(20):
-        cont = L.legval(x, L.legfit(x[usar], flujo[usar], orden))
-        r = flujo - cont
-        s = np.std(r[usar])
-        nuevo = usar & (r > -1.5 * s) & (r < 3 * s)
-        if nuevo.sum() == usar.sum():
+    continuum = np.empty_like(flux)
+    for _ in range(max_iter):
+        coeffs = leg.legfit(scaled_wave[fit_mask], flux[fit_mask], degree)
+        continuum = leg.legval(scaled_wave, coeffs)
+        
+        residuals = flux - continuum
+        std_residuals = np.std(residuals[fit_mask])
+        
+        # Asymmetric rejection to avoid absorption troughs while keeping stellar continuum
+        updated_mask = fit_mask & (residuals > -1.5 * std_residuals) & (residuals < 3.0 * std_residuals)
+        if updated_mask.sum() == fit_mask.sum():
             break
-        usar = nuevo
-    return cont
+        fit_mask = updated_mask
+
+    return continuum
 
 
-def continuo_envolvente(lam, flujo, ancho=25.0, percentil=95):
-    """Pseudo-continuo: nivel alto del flujo en tramos de 'ancho' Å."""
-    xs, ys = [], []
-    for a in np.arange(lam.min(), lam.max(), ancho):
-        s = (lam >= a) & (lam < a + ancho)
-        if s.sum() < 10:
+def fit_envelope_continuum(
+    wavelength: np.ndarray,
+    flux: np.ndarray,
+    bin_width: float = 25.0,
+    percentile: float = 95.0,
+) -> np.ndarray:
+    """
+    Estimates pseudo-continuum for crowded/cool spectra via local upper-percentile interpolation.
+    """
+    anchor_wavelengths: List[float] = []
+    anchor_fluxes: List[float] = []
+
+    for bin_start in np.arange(wavelength.min(), wavelength.max(), bin_width):
+        bin_mask = (wavelength >= bin_start) & (wavelength < bin_start + bin_width)
+        if bin_mask.sum() < 10:
             continue
-        nivel = np.percentile(flujo[s], percentil)
-        xs.append(np.mean(lam[s][flujo[s] >= nivel]))
-        ys.append(nivel)
-    return PchipInterpolator(xs, ys)(lam)
+
+        threshold = np.percentile(flux[bin_mask], percentile)
+        top_flux_mask = bin_mask & (flux >= threshold)
+        
+        anchor_wavelengths.append(float(np.mean(wavelength[top_flux_mask])))
+        anchor_fluxes.append(float(threshold))
+
+    interpolator = PchipInterpolator(anchor_wavelengths, anchor_fluxes)
+    return interpolator(wavelength)
 
 
-# ----------------------------------------------------------------- líneas
-def poner_lineas(ax, a, b):
-    """Línea vertical en cada λ y su etiqueta encima. Si dos etiquetas
-    quedan muy juntas se separan un poco y una rayita las une a su λ."""
-    sel = sorted([(n, l) for n, l in LINEAS if a < l < b], key=lambda t: t[1])
-    if not sel:
-        return
-    sep = 0.013 * (b - a)                    # separación mínima entre etiquetas
-    pos = [l for _, l in sel]
-    for _ in range(100):                     # empuja las que se solapan
-        cambio = False
-        for i in range(1, len(pos)):
-            if pos[i] - pos[i - 1] < sep:
-                d = (sep - (pos[i] - pos[i - 1])) / 2
-                pos[i - 1] -= d; pos[i] += d
-                cambio = True
-        if not cambio:
+def normalize_spectrum(
+    wavelength: np.ndarray,
+    flux: np.ndarray,
+    method: str,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Dispatches continuum fitting method and returns (continuum, normalized_flux).
+    """
+    if method == "polynomial":
+        continuum = fit_polynomial_continuum(wavelength, flux)
+    elif method == "envelope":
+        continuum = fit_envelope_continuum(wavelength, flux)
+    else:
+        raise ValueError(f"Unknown normalization method: {method}")
+
+    normalized_flux = flux / continuum
+    return continuum, normalized_flux
+
+
+# -----------------------------------------------------------------------------
+# Visualization
+# -----------------------------------------------------------------------------
+
+def resolve_label_overlaps(
+    wavelengths: List[float],
+    min_separation: float,
+    max_iter: int = 100,
+) -> List[float]:
+    """
+    Applies iterative 1D repulsive relaxation to prevent adjacent label collisions.
+    """
+    positions = list(wavelengths)
+    for _ in range(max_iter):
+        shifted = False
+        for i in range(1, len(positions)):
+            gap = positions[i] - positions[i - 1]
+            if gap < min_separation:
+                overlap = (min_separation - gap) / 2.0
+                positions[i - 1] -= overlap
+                positions[i] += overlap
+                shifted = True
+        if not shifted:
             break
-    for (nombre, l), p in zip(sel, pos):
-        ax.vlines(l, 0.2, 1.10, color="tab:blue", lw=0.5, ls=":")
-        ax.plot([l, p], [1.10, 1.16], color="tab:blue", lw=0.5)
-        ax.text(p, 1.17, f"{nombre} {l:.0f}", rotation=90, fontsize=6.5,
-                ha="center", va="bottom", color="tab:blue")
+    return positions
 
 
-# ----------------------------------------------------------------- principal
-os.makedirs("figuras", exist_ok=True)
+def annotate_spectral_lines(
+    ax: plt.Axes,
+    min_wave: float,
+    max_wave: float,
+    lines: List[Tuple[str, float]],
+) -> None:
+    """
+    Draws vertical markers and collision-free labels for lines in the current region.
+    """
+    visible_lines = sorted(
+        [(name, wave) for name, wave in lines if min_wave < wave < max_wave],
+        key=lambda item: item[1]
+    )
+    if not visible_lines:
+        return
 
-for fichero, metodo in ESTRELLAS.items():
-    nombre = fichero.replace(".dat", "")
-    lam, flujo = leer(fichero)
-    cont = continuo_polinomio(lam, flujo) if metodo == "polinomio" \
-        else continuo_envolvente(lam, flujo)
-    fnorm = flujo / cont
+    min_separation = 0.013 * (max_wave - min_wave)
+    original_waves = [wave for _, wave in visible_lines]
+    label_positions = resolve_label_overlaps(original_waves, min_separation)
 
-    with PdfPages(f"figuras/{nombre}.pdf") as pdf:
-        for a, b in REGIONES:
+    for (name, line_wave), label_wave in zip(visible_lines, label_positions):
+        # Line marker at the actual line wavelength
+        ax.vlines(line_wave, 0.2, 1.10, color="tab:blue", lw=0.5, ls=":")
+        # Angled segment guiding to displaced label position
+        ax.plot([line_wave, label_wave], [1.10, 1.16], color="tab:blue", lw=0.5)
+        # Rotated text annotation
+        ax.text(
+            label_wave,
+            1.17,
+            f"{name} {line_wave:.0f}",
+            rotation=90,
+            fontsize=6.5,
+            ha="center",
+            va="bottom",
+            color="tab:blue",
+        )
+
+
+def export_spectrum_pdf(
+    wavelength: np.ndarray,
+    normalized_flux: np.ndarray,
+    target_name: str,
+    output_pdf_path: Path,
+    regions: List[Tuple[float, float]],
+    reference_lines: List[Tuple[str, float]],
+) -> None:
+    """
+    Generates a multi-page PDF plotting each specified spectral window.
+    """
+    with PdfPages(output_pdf_path) as pdf:
+        for min_wave, max_wave in regions:
             fig, ax = plt.subplots(figsize=(13, 6))
-            s = (lam >= a) & (lam <= b)
-            ax.plot(lam[s], fnorm[s], "k", lw=0.7)
-            ax.axhline(1, color="gray", lw=0.5, ls="--")
-            ax.set_xlim(a, b); ax.set_ylim(0.2, 1.6)
-            ax.set_xlabel("λ (Å)"); ax.set_ylabel("Flujo normalizado")
-            ax.set_title(f"{nombre}   {a}–{b} Å")
-            poner_lineas(ax, a, b)
-            fig.tight_layout()
-            pdf.savefig(fig); plt.close(fig)
+            
+            region_mask = (wavelength >= min_wave) & (wavelength <= max_wave)
+            ax.plot(wavelength[region_mask], normalized_flux[region_mask], "k", lw=0.7)
+            ax.axhline(1.0, color="gray", lw=0.5, ls="--")
 
-    print(f"figuras/{nombre}.pdf")
+            ax.set_xlim(min_wave, max_wave)
+            ax.set_ylim(0.2, 1.6)
+            ax.set_xlabel("λ (Å)")
+            ax.set_ylabel("Normalized Flux")
+            ax.set_title(f"{target_name} — {min_wave:.0f}–{max_wave:.0f} Å")
+
+            annotate_spectral_lines(ax, min_wave, max_wave, reference_lines)
+
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+def main() -> None:
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+    for file_path, norm_method in TARGET_STARS.items():
+        if not file_path.exists():
+            print(f"Warning: File not found: {file_path}")
+            continue
+
+        target_name = file_path.stem
+        wavelength, raw_flux = load_spectrum(file_path)
+        
+        _, normalized_flux = normalize_spectrum(wavelength, raw_flux, method=norm_method)
+
+        output_pdf = FIGURES_DIR / f"{target_name}.pdf"
+        export_spectrum_pdf(
+            wavelength=wavelength,
+            normalized_flux=normalized_flux,
+            target_name=target_name,
+            output_pdf_path=output_pdf,
+            regions=SPECTRAL_REGIONS,
+            reference_lines=SPECTRAL_LINES,
+        )
+
+        print(f"Generated: {output_pdf}")
+
+
+if __name__ == "__main__":
+    main()
