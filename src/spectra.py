@@ -1,4 +1,4 @@
-"""Lectura de espectros y normalización del continuo."""
+"""Spectrum loading and continuum normalization."""
 
 from pathlib import Path
 from typing import List, Tuple
@@ -7,7 +7,7 @@ import numpy as np
 from numpy.polynomial import Legendre
 from scipy.interpolate import PchipInterpolator
 
-# Parámetros de normalización (antes iban como un `11` posicional).
+# Normalization parameters (they used to be a positional `11`).
 POLYNOMIAL_DEGREE = 11
 ENVELOPE_BIN_WIDTH = 11.0  # Å
 
@@ -15,7 +15,7 @@ METHODS = ("polynomial", "envelope")
 
 
 def load_spectrum(filepath: Path) -> Tuple[np.ndarray, np.ndarray]:
-    """Carga un .dat de dos columnas (λ en Å, flujo); devuelve (λ, flujo) ordenados."""
+    """Loads a two-column .dat file (λ in Å, flux); returns sorted (λ, flux)."""
     raw_data = np.genfromtxt(filepath, comments="#", invalid_raise=False)
     valid_mask = np.isfinite(raw_data).all(axis=1)
     clean_data = raw_data[valid_mask]
@@ -30,7 +30,7 @@ def fit_polynomial_continuum(
     degree: int = 6,
     max_iter: int = 20,
 ) -> np.ndarray:
-    """Ajusta iterativamente un polinomio de Legendre rechazando líneas de absorción."""
+    """Iteratively fits a Legendre polynomial continuum while rejecting absorption lines."""
     rejection_intervals = [(3925, 3985), (4060, 4145), (4300, 4380), (4820, 4900), (6520, 6600)]
 
     mask = ~np.bitwise_or.reduce([(wavelength > lo) & (wavelength < hi) for lo, hi in rejection_intervals])
@@ -54,7 +54,7 @@ def fit_envelope_continuum(
     bin_width: float = 25.0,
     percentile: float = 95.0,
 ) -> np.ndarray:
-    """Pseudo-continuo para espectros fríos/saturados: percentil alto por bin + interpolación."""
+    """Pseudo-continuum for cool/crowded spectra: upper percentile per bin + interpolation."""
     anchor_wavelengths: List[float] = []
     anchor_fluxes: List[float] = []
 
@@ -78,7 +78,7 @@ def normalize_spectrum(
     flux: np.ndarray,
     method: str,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Devuelve (continuo, flujo_normalizado) según el método elegido."""
+    """Returns (continuum, normalized_flux) for the chosen method."""
     if method == "polynomial":
         continuum = fit_polynomial_continuum(wavelength, flux, degree=POLYNOMIAL_DEGREE)
     elif method == "envelope":

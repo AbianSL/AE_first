@@ -1,11 +1,11 @@
-"""Gráficas: anotación de líneas/bandas y exportación a PDF."""
+"""Plots: line/band annotation and export to PDF, PNG, JPG and SVG."""
 
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 import matplotlib
 
-matplotlib.use("Agg")  # solo se escriben PDFs; no hace falta ventana
+matplotlib.use("Agg")  # files are written without opening a window
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
@@ -20,7 +20,7 @@ def resolve_label_overlaps(
     min_separation: float,
     max_iter: int = 100,
 ) -> List[float]:
-    """Relajación repulsiva 1D para que las etiquetas contiguas no se solapen."""
+    """1D repulsive relaxation so adjacent labels do not overlap."""
     positions = list(wavelengths)
     for _ in range(max_iter):
         shifted = False
@@ -44,11 +44,11 @@ def annotate_spectral_lines(
     bands: Optional[List[Band]] = None,
 ) -> None:
     """
-    Sombrea las bandas en gris y marca las líneas con su etiqueta.
-    La coordenada y va en fracción del eje (0 = abajo, 1 = arriba), así que
-    funciona igual con flujo normalizado que con flujo bruto.
+    Shades the bands in gray and marks the lines with their labels.
+    The y coordinate is an axes fraction (0 = bottom, 1 = top), so it works
+    the same for normalized and raw flux.
     """
-    transform = ax.get_xaxis_transform()  # x en Å, y en fracción del eje
+    transform = ax.get_xaxis_transform()  # x in Å, y as axes fraction
 
     if bands:
         for name, (band_min, band_max) in bands:
@@ -85,7 +85,7 @@ def annotate_spectral_lines(
         )
 
 
-Spectrum = Tuple[str, np.ndarray, np.ndarray]  # (nombre, longitud de onda, flujo)
+Spectrum = Tuple[str, np.ndarray, np.ndarray]  # (name, wavelength, flux)
 
 SPECTRUM_STYLES = [
     {"color": "black", "lw": 0.8},
@@ -100,12 +100,12 @@ def draw_window(
     max_wave: float,
     reference_lines: List[Line],
     reference_bands: Optional[List[Band]] = None,
-    flux_label: str = "Flujo",
+    flux_label: str = "Flux",
 ) -> bool:
     """
-    Dibuja uno o dos espectros en una ventana, con líneas y bandas de referencia.
-    El eje y se ajusta a los datos de la ventana, con margen arriba para las
-    etiquetas. Devuelve False si no hay datos en la ventana.
+    Draws one or two spectra in a window, with reference lines and bands.
+    The y axis fits the data in the window, with headroom on top for the
+    labels. Returns False if there is no data in the window.
     """
     pieces = []
     for (name, wavelength, flux), style in zip(spectra, SPECTRUM_STYLES):
@@ -119,7 +119,7 @@ def draw_window(
     y = np.concatenate(pieces)
     lo, hi = float(np.min(y)), float(np.max(y))
     span = (hi - lo) or 1.0
-    ax.set_ylim(0, 1.5)
+    ax.set_ylim(lo - 0.05 * span, hi + 0.6 * span)
     ax.set_xlim(min_wave, max_wave)
     ax.set_xlabel("λ (Å)")
     ax.set_ylabel(flux_label)
@@ -135,9 +135,9 @@ def export_pdf(
     output_pdf_path: Path,
     reference_lines: List[Line],
     reference_bands: Optional[List[Band]] = None,
-    flux_label: str = "Flujo",
+    flux_label: str = "Flux",
 ) -> int:
-    """PDF con una ventana por página. Devuelve el número de páginas escritas."""
+    """PDF with one window per page. Returns the number of pages written."""
     pages = 0
     with PdfPages(output_pdf_path) as pdf:
         for min_wave, max_wave in windows:
@@ -160,14 +160,14 @@ def export_file(
     output_path: Path,
     reference_lines: List[Line],
     reference_bands: Optional[List[Band]] = None,
-    flux_label: str = "Flujo",
+    flux_label: str = "Flux",
     dpi: int = 200,
 ) -> List[Path]:
     """
-    Guarda según la extensión de `output_path` (.pdf, .png, .jpg o .svg).
-    PDF: un solo archivo con una página por ventana. Imágenes: un archivo por
-    ventana (si hay más de una, se añade «_MIN-MAX» al nombre).
-    Devuelve las rutas escritas.
+    Saves according to the extension of `output_path` (.pdf, .png, .jpg or .svg).
+    PDF: a single file with one page per window. Images: one file per window
+    (if there is more than one, "_MIN-MAX" is added to the file name).
+    Returns the paths written.
     """
     output_path = Path(output_path)
     if output_path.suffix.lower() == ".pdf":
