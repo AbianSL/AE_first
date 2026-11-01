@@ -222,3 +222,13 @@ __marimo__/
 # ignore zip files
 *.zip
 **/*.zip
+
+# ignore image and pdf files
+*.jpg
+*.jpeg
+*.png
+*.pdf
+figures/**/*.jpg
+figures/**/*.jpeg
+figures/**/*.png
+figures/**/*.pdf
