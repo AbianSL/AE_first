@@ -42,7 +42,7 @@ class App(tk.Tk):
         self.min_var = tk.StringVar()
         self.max_var = tk.StringVar()
         self.status = tk.StringVar(value="Elige un espectro para empezar.")
-        self.save_type = tk.StringVar()
+        self.save_format = tk.StringVar(value="PDF")
 
         # Lista de regiones: primero las de zoom con nombre, luego las generales.
         self.regions: Dict[str, Tuple[float, float]] = dict(NAMED_REGIONS)
@@ -121,13 +121,18 @@ class App(tk.Tk):
         ttk.Button(row, text="Quitar", command=self._remove_region).pack(side=tk.LEFT)
 
         # 4. Guardar
-        box = ttk.LabelFrame(panel, text="4. Guardar (PDF, PNG, JPG o SVG)", padding=8)
+        box = ttk.LabelFrame(panel, text="4. Guardar", padding=8)
         box.pack(fill=tk.X, pady=(0, 8))
+        row = ttk.Frame(box)
+        row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(row, text="Formato:").pack(side=tk.LEFT)
+        ttk.Combobox(row, textvariable=self.save_format, state="readonly", width=8,
+                     values=[f.lstrip(".").upper() for f in SAVE_FORMATS]).pack(side=tk.LEFT, padx=5)
         ttk.Button(box, text="Esta vista", command=self.save_current).pack(fill=tk.X)
         ttk.Button(box, text="Todas las regiones de la lista",
                    command=self.save_all).pack(fill=tk.X, pady=(4, 0))
-        ttk.Label(box, text="El formato lo decide la extensión. PDF: un archivo con\n"
-                            "una página por región; imágenes: un archivo por región.",
+        ttk.Label(box, text="PDF: un archivo con una página por región.\n"
+                            "PNG/JPG/SVG: un archivo por región, en la carpeta que elijas.",
                   foreground="dimgray").pack(anchor=tk.W, pady=(4, 0))
 
         ttk.Label(panel, textvariable=self.status, wraplength=290, foreground="dimgray").pack(anchor=tk.W)
@@ -287,11 +292,11 @@ class App(tk.Tk):
         self.canvas.draw_idle()
 
     # --------------------------------------------------------------- Guardar
-    def _default_name(self, tag: str) -> str:
+    def _base_name(self) -> str:
         names = [p.stem for p in self.paths if p]
-        return f"{'_vs_'.join(names) if names else 'espectro'}{tag}.pdf"
+        return "_vs_".join(names) if names else "espectro"
 
-    def _write(self, windows: List[Tuple[float, float]], tag: str) -> None:
+    def _write(self, windows: List[Tuple[float, float]], tag: str, many: bool) -> None:
         try:
             spectra = self._spectra()
         except Exception as error:
@@ -300,20 +305,28 @@ class App(tk.Tk):
         if not spectra:
             messagebox.showinfo("Guardar", "Primero elige un espectro.")
             return
+
+        ext = f".{self.save_format.get().lower()}"
         FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-        chosen = filedialog.asksaveasfilename(
-            title="Guardar", defaultextension=".pdf", typevariable=self.save_type,
-            filetypes=[("PDF", "*.pdf"), ("PNG", "*.png"), ("JPG", "*.jpg"), ("SVG", "*.svg")],
-            initialdir=FIGURES_DIR, initialfile=self._default_name(tag),
-        )
-        if not chosen:
-            return
-        path = Path(chosen)
-        if path.suffix.lower() == ".jpeg":
-            path = path.with_suffix(".jpg")
-        if path.suffix.lower() not in SAVE_FORMATS:
-            picked = f".{self.save_type.get().lower()}"
-            path = path.with_name(path.name + (picked if picked in SAVE_FORMATS else ".pdf"))
+        if many and ext != ".pdf":
+            # Muchas imágenes: se elige una carpeta y dentro va un archivo por región.
+            folder = filedialog.askdirectory(title="Elige la carpeta donde guardar las imágenes",
+                                             initialdir=FIGURES_DIR, mustexist=False)
+            if not folder:
+                return
+            path = Path(folder) / f"{self._base_name()}{ext}"
+        else:
+            chosen = filedialog.asksaveasfilename(
+                title=f"Guardar como {ext[1:].upper()}", defaultextension=ext,
+                filetypes=[(ext[1:].upper(), f"*{ext}")],
+                initialdir=FIGURES_DIR, initialfile=f"{self._base_name()}{tag}",
+            )
+            if not chosen:
+                return
+            path = Path(chosen)
+            if path.suffix.lower() != ext:      # el formato lo manda el selector
+                path = path.with_name(path.name + ext)
+
         written = export_file(spectra, windows, path, SPECTRAL_LINES, SPECTRAL_BANDS, self._flux_label())
         if not written:
             self.status.set("No se guardó nada: no hay datos en esas regiones.")
@@ -325,10 +338,10 @@ class App(tk.Tk):
     def save_current(self) -> None:
         window = self._current_window()
         if window:
-            self._write([window], f"_{window[0]:.0f}-{window[1]:.0f}")
+            self._write([window], f"_{window[0]:.0f}-{window[1]:.0f}", many=False)
 
     def save_all(self) -> None:
-        self._write(list(self.regions.values()), "")
+        self._write(list(self.regions.values()), "", many=True)
 
 
 def run() -> None:

@@ -60,6 +60,8 @@ RAW_SPECTRAL_LINES: Dict[str, List[float]] = {
     "Fe I": [4383.0, 4046.0],
     "Li I": [6708.0],
     "Mn I": [4030.0, 4034.0],
+    "Sr II": [4077.0, 4216.0],
+    "Y II": [4367.0],
 }
 
 SPECTRAL_BANDS: List[Tuple[str, Tuple[float, float]]] = []

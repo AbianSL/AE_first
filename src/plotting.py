@@ -119,7 +119,7 @@ def draw_window(
     y = np.concatenate(pieces)
     lo, hi = float(np.min(y)), float(np.max(y))
     span = (hi - lo) or 1.0
-    ax.set_ylim(lo - 0.05 * span, hi + 0.6 * span)
+    ax.set_ylim(0, 1.5)
     ax.set_xlim(min_wave, max_wave)
     ax.set_xlabel("λ (Å)")
     ax.set_ylabel(flux_label)
