@@ -18,17 +18,17 @@ from .models import (
     TARGET_STARS,
 )
 from .plotting import SAVE_FORMATS, Spectrum, draw_window, export_file
-from .spectra import METHODS, load_spectrum, normalize_spectrum
+from .spectra import METHODS, load_spectrum, rectify_spectrum
 
 AUTO = "automatic"
 
-# Only the "EstrellaProblema…" spectra come unnormalized; the rest already are.
-UNNORMALIZED_PREFIX = "EstrellaProblema"
+# Only the "EstrellaProblema…" spectra come unrectified; the rest already are.
+UNRECTIFIED_PREFIX = "EstrellaProblema"
 TARGET_METHODS = {path.name: method for path, method in TARGET_STARS.items()}
 
 
-def needs_normalization(path: Path) -> bool:
-    return path.name in TARGET_METHODS or path.stem.startswith(UNNORMALIZED_PREFIX)
+def needs_rectification(path: Path) -> bool:
+    return path.name in TARGET_METHODS or path.stem.startswith(UNRECTIFIED_PREFIX)
 
 
 class App(tk.Tk):
@@ -54,7 +54,7 @@ class App(tk.Tk):
         self.custom: set = set()
 
         self._raw: Dict[Path, tuple] = {}          # path -> (λ, flux)
-        self._normalized: Dict[tuple, object] = {}  # (path, method) -> normalized flux
+        self._rectified: Dict[tuple, object] = {}  # (path, method) -> rectified flux
 
         self._build_controls()
         self._build_plot()
@@ -84,10 +84,10 @@ class App(tk.Tk):
                 ttk.Button(row, text="Remove", command=lambda i=i: self._set_path(i, None)).pack(side=tk.LEFT, padx=3)
             self.file_labels.append(label)
 
-        # 2. Normalization
-        box = ttk.LabelFrame(panel, text="2. Normalization", padding=8)
+        # 2. Rectification
+        box = ttk.LabelFrame(panel, text="2. Rectification", padding=8)
         box.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(box, text="The «EstrellaProblema» files are normalized\nautomatically; the rest already are.",
+        ttk.Label(box, text="The «EstrellaProblema» files are rectified\nautomatically; the rest already are.",
                   foreground="dimgray").pack(anchor=tk.W)
         row = ttk.Frame(box)
         row.pack(fill=tk.X, pady=(4, 0))
@@ -197,18 +197,18 @@ class App(tk.Tk):
             if path not in self._raw:
                 self._raw[path] = load_spectrum(path)
             wavelength, flux = self._raw[path]
-            if needs_normalization(path):
+            if needs_rectification(path):
                 key = (path, self._method_for(path))
-                if key not in self._normalized:
-                    self.status.set(f"Normalizing {path.stem}…")
+                if key not in self._rectified:
+                    self.status.set(f"Rectifying {path.stem}…")
                     self.update_idletasks()
-                    self._normalized[key] = normalize_spectrum(wavelength, flux, key[1])[1]
-                flux = self._normalized[key]
+                    self._rectified[key] = rectify_spectrum(wavelength, flux, key[1])[1]
+                flux = self._rectified[key]
             spectra.append((path.stem, wavelength, flux))
         return spectra
 
     def _flux_label(self) -> str:
-        return "Normalized flux"
+        return "Rectified flux"
 
     # --------------------------------------------------------------- Region
     def _on_region_selected(self) -> None:
@@ -271,7 +271,7 @@ class App(tk.Tk):
         window = self._current_window()
         try:
             spectra = self._spectra()
-        except Exception as error:  # unreadable file, failed normalization…
+        except Exception as error:  # unreadable file, failed rectification…
             messagebox.showerror("Error", f"Could not process the spectrum:\n{error}")
             self.status.set("Error while processing the spectrum.")
             return

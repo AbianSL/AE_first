@@ -46,7 +46,7 @@ def annotate_spectral_lines(
     """
     Shades the bands in gray and marks the lines with their labels.
     The y coordinate is an axes fraction (0 = bottom, 1 = top), so it works
-    the same for normalized and raw flux.
+    the same for rectified and raw flux.
     """
     transform = ax.get_xaxis_transform()  # x in Å, y as axes fraction
 

@@ -1,4 +1,4 @@
-"""Spectrum loading and continuum normalization."""
+"""Spectrum loading and continuum rectification."""
 
 from pathlib import Path
 from typing import List, Tuple
@@ -7,7 +7,7 @@ import numpy as np
 from numpy.polynomial import Legendre
 from scipy.interpolate import PchipInterpolator
 
-# Normalization parameters (they used to be a positional `11`).
+# Rectification parameters (they used to be a positional `11`).
 POLYNOMIAL_DEGREE = 11
 ENVELOPE_BIN_WIDTH = 11.0  # Å
 
@@ -73,17 +73,17 @@ def fit_envelope_continuum(
     return interpolator(wavelength)
 
 
-def normalize_spectrum(
+def rectify_spectrum(
     wavelength: np.ndarray,
     flux: np.ndarray,
     method: str,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Returns (continuum, normalized_flux) for the chosen method."""
+    """Returns (continuum, rectified_flux) for the chosen method."""
     if method == "polynomial":
         continuum = fit_polynomial_continuum(wavelength, flux, degree=POLYNOMIAL_DEGREE)
     elif method == "envelope":
         continuum = fit_envelope_continuum(wavelength, flux, bin_width=ENVELOPE_BIN_WIDTH)
     else:
-        raise ValueError(f"Unknown normalization method: {method}")
+        raise ValueError(f"Unknown rectification method: {method}")
 
     return continuum, flux / continuum
