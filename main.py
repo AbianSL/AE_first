@@ -10,7 +10,14 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from numpy.polynomial import legendre as leg
 from scipy.interpolate import PchipInterpolator
-from src.models import DATA_DIR, FIGURES_DIR, TARGET_STARS, SPECTRAL_REGIONS, SPECTRAL_LINES
+from src.models import (
+    DATA_DIR,
+    FIGURES_DIR,
+    TARGET_STARS,
+    SPECTRAL_REGIONS,
+    SPECTRAL_LINES,
+    SPECTRAL_BANDS,
+)
 
 # -----------------------------------------------------------------------------
 # Data Ingestion
@@ -138,8 +145,34 @@ def annotate_spectral_lines(
     min_wave: float,
     max_wave: float,
     lines: List[Tuple[str, float]],
+    bands: List[Tuple[str, Tuple[float, float]]] = None,
 ) -> None:
-    visible_lines = [(name, wave) for name, wave in lines if min_wave <= wave <= max_wave]
+    if bands is not None:
+        for name, (band_min, band_max) in bands:
+            if not (max_wave < band_min or min_wave > band_max):
+                ax.axvspan(
+                    max(min_wave, band_min),
+                    min(max_wave, band_max),
+                    color="gray",
+                    alpha=0.25,
+                    zorder=0,
+                )
+                mid = (band_min + band_max) / 2.0
+                if min_wave <= mid <= max_wave:
+                    ax.text(
+                        mid,
+                        1.17,
+                        name,
+                        fontsize=7.0,
+                        ha="center",
+                        va="bottom",
+                        color="dimgray",
+                        fontweight="bold",
+                    )
+
+    visible_lines = [
+        (name, wave) for name, wave in lines if min_wave <= wave <= max_wave
+    ]
     if not visible_lines:
         return
 
@@ -168,7 +201,8 @@ def export_spectrum_pdf(
     output_pdf_path: Path,
     regions: List[Tuple[float, float]],
     reference_lines: List[Tuple[str, float]],
-) -> None:
+    reference_bands: List[Tuple[str, Tuple[float, float]]] = None,
+    ) -> None:
     """
     Generates a multi-page PDF plotting each specified spectral window,
     followed by two extra pages showing the entire spectrum divided in half.
@@ -186,8 +220,7 @@ def export_spectrum_pdf(
         ax.set_ylabel("Normalized Flux")
         ax.set_title(f"{target_name} — {title_suffix}")
 
-        annotate_spectral_lines(ax, min_wave, max_wave, reference_lines)
-
+        annotate_spectral_lines(ax, min_wave, max_wave, reference_lines, reference_bands)
         fig.tight_layout()
         return fig
 
@@ -239,6 +272,7 @@ def main() -> None:
             output_pdf_path=output_pdf,
             regions=SPECTRAL_REGIONS,
             reference_lines=SPECTRAL_LINES,
+            reference_bands=SPECTRAL_BANDS,
         )
         print(f"Generated: {output_pdf}")
         print("-" * 60)

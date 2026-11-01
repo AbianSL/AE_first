@@ -22,7 +22,9 @@ SPECTRAL_REGIONS: List[Tuple[float, float]] = [
 RAW_SPECTRAL_LINES: Dict[str, List[float]] = {
     # Regions
     "Banda G (CH)": [(4295.0, 4315.0)],
-    "TiO": [(4584.0, 4610.0), (4759.0, 4810.0), (4954.0, 5000.0)],
+    "CN": [4215.0],
+    "MgH": [4780.0, 5200.0],
+    "TiO": [4584.0, 4623.0, 4759.0, 4804.0, 4954.0],
     # Lines
     "Hε": [3970.07],
     "Hδ": [4101.73],
@@ -50,12 +52,19 @@ RAW_SPECTRAL_LINES: Dict[str, List[float]] = {
     "Mg II": [4481.13],
     "Fe II": [4416.8, 4922.1],
     "Fe I": [4143.8, 4383.0],
-    "TiO": [4584.0, 4623.0, 4759.0, 4804.0, 4954.0],
     "Li I": [6708.0],
     "Mn I": [4030.0, 4034.0],
 }
 
-SPECTRAL_LINES: List[Tuple[str, float]] = sorted(
-    [(ion, wave) for ion, waves in RAW_SPECTRAL_LINES.items() for wave in waves],
-    key=lambda item: item[1]
-)
+SPECTRAL_BANDS: List[Tuple[str, Tuple[float, float]]] = []
+raw_lines: List[Tuple[str, float]] = []
+
+for name, values in RAW_SPECTRAL_LINES.items():
+    for item in values:
+        if isinstance(item, tuple):
+            SPECTRAL_BANDS.append((name, item))
+        else:
+            raw_lines.append((name, float(item)))
+
+SPECTRAL_LINES: List[Tuple[str, float]] = sorted(raw_lines, key=lambda x: x[1])
+
