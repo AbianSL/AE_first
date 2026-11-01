@@ -6,8 +6,14 @@ FIGURES_DIR = Path("figuras")
 
 TARGET_STARS: Dict[Path, str] = {
     DATA_DIR / "EstrellaProblema1.dat": "polynomial",
-    DATA_DIR / "EstrellaProblema2.dat": "envelope",
+    DATA_DIR / "EstrellaProblema2.dat": "polynomial",
 }
+
+NAMED_REGIONS: Dict[str, Tuple[float, float]] = {
+    "Fe I 4046 + Hδ 4102": (4020.0, 4120.0),  # Mn I 4030/4034, Fe I 4046, Hδ 4102
+    "Banda G + Hγ 4340": (4280.0, 4360.0),
+}
+
 
 SPECTRAL_REGIONS: List[Tuple[float, float]] = [
     (3900.0, 4100.0),
@@ -51,7 +57,7 @@ RAW_SPECTRAL_LINES: Dict[str, List[float]] = {
     "C II": [4267.01],
     "Mg II": [4481.13],
     "Fe II": [4416.8, 4922.1],
-    "Fe I": [4143.8, 4383.0],
+    "Fe I": [4383.0, 4046.0],
     "Li I": [6708.0],
     "Mn I": [4030.0, 4034.0],
 }
