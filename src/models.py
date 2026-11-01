@@ -4,8 +4,6 @@ from typing import Dict, List, Tuple
 DATA_DIR = Path("data")
 FIGURES_DIR = Path("figuras")
 
-# Map of stellar spectrum files to their normalization strategy:
-# 'polynomial' for hotter stars, 'envelope' for cooler stars
 TARGET_STARS: Dict[Path, str] = {
     DATA_DIR / "EstrellaProblema1.dat": "polynomial",
     DATA_DIR / "EstrellaProblema2.dat": "envelope",
@@ -22,6 +20,10 @@ SPECTRAL_REGIONS: List[Tuple[float, float]] = [
 ]
 
 RAW_SPECTRAL_LINES: Dict[str, List[float]] = {
+    # Regions
+    "Banda G (CH)": [(4295.0, 4315.0)],
+    "TiO": [(4584.0, 4610.0), (4759.0, 4810.0), (4954.0, 5000.0)],
+    # Lines
     "Hε": [3970.07],
     "Hδ": [4101.73],
     "Hγ": [4340.47],
@@ -49,7 +51,6 @@ RAW_SPECTRAL_LINES: Dict[str, List[float]] = {
     "Fe II": [4416.8, 4922.1],
     "Fe I": [4143.8, 4383.0],
     "TiO": [4584.0, 4623.0, 4759.0, 4804.0, 4954.0],
-    "Banda G": [4300.0],
     "Li I": [6708.0],
     "Mn I": [4030.0, 4034.0],
 }

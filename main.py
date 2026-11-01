@@ -96,9 +96,9 @@ def normalize_spectrum(
     Dispatches continuum fitting method and returns (continuum, normalized_flux).
     """
     if method == "polynomial":
-        continuum = fit_polynomial_continuum(wavelength, flux)
+        continuum = fit_polynomial_continuum(wavelength, flux, 11)
     elif method == "envelope":
-        continuum = fit_envelope_continuum(wavelength, flux)
+        continuum = fit_envelope_continuum(wavelength, flux, 11)
     else:
         raise ValueError(f"Unknown normalization method: {method}")
 
@@ -139,7 +139,7 @@ def annotate_spectral_lines(
     max_wave: float,
     lines: List[Tuple[str, float]],
 ) -> None:
-    visible_lines = [(name, wave) for name, wave in lines if min_wave < wave < max_wave]
+    visible_lines = [(name, wave) for name, wave in lines if min_wave <= wave <= max_wave]
     if not visible_lines:
         return
 
@@ -170,27 +170,48 @@ def export_spectrum_pdf(
     reference_lines: List[Tuple[str, float]],
 ) -> None:
     """
-    Generates a multi-page PDF plotting each specified spectral window.
+    Generates a multi-page PDF plotting each specified spectral window,
+    followed by two extra pages showing the entire spectrum divided in half.
     """
+    def plot_page(min_wave: float, max_wave: float, title_suffix: str):
+        fig, ax = plt.subplots(figsize=(13, 6))
+        
+        region_mask = (wavelength >= min_wave) & (wavelength <= max_wave)
+        ax.plot(wavelength[region_mask], normalized_flux[region_mask], "k", lw=0.7)
+        ax.axhline(1.0, color="gray", lw=0.5, ls="--")
+
+        ax.set_xlim(min_wave, max_wave)
+        ax.set_ylim(-1, 2)
+        ax.set_xlabel("λ (Å)")
+        ax.set_ylabel("Normalized Flux")
+        ax.set_title(f"{target_name} — {title_suffix}")
+
+        annotate_spectral_lines(ax, min_wave, max_wave, reference_lines)
+
+        fig.tight_layout()
+        return fig
+
     with PdfPages(output_pdf_path) as pdf:
+        # 1. Graficar las regiones específicas
         for min_wave, max_wave in regions:
-            fig, ax = plt.subplots(figsize=(13, 6))
-            
-            region_mask = (wavelength >= min_wave) & (wavelength <= max_wave)
-            ax.plot(wavelength[region_mask], normalized_flux[region_mask], "k", lw=0.7)
-            ax.axhline(1.0, color="gray", lw=0.5, ls="--")
-
-            ax.set_xlim(min_wave, max_wave)
-            ax.set_ylim(0.2, 1.6)
-            ax.set_xlabel("λ (Å)")
-            ax.set_ylabel("Normalized Flux")
-            ax.set_title(f"{target_name} — {min_wave:.0f}–{max_wave:.0f} Å")
-
-            annotate_spectral_lines(ax, min_wave, max_wave, reference_lines)
-
-            fig.tight_layout()
+            fig = plot_page(min_wave, max_wave, f"{min_wave:.0f}–{max_wave:.0f} Å")
             pdf.savefig(fig)
             plt.close(fig)
+
+        # 2. Graficar el espectro completo dividido en dos mitades
+        min_total = float(wavelength.min())
+        max_total = float(wavelength.max())
+        mid_total = (min_total + max_total) / 2.0
+
+        # Mitad 1
+        fig_part1 = plot_page(min_total, 4300, "Espectro Completo (Parte 1)")
+        pdf.savefig(fig_part1)
+        plt.close(fig_part1)
+
+        # Mitad 2
+        fig_part2 = plot_page(4500, max_total, "Espectro Completo (Parte 2)")
+        pdf.savefig(fig_part2)
+        plt.close(fig_part2)
 
 def main() -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
